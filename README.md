@@ -1,4 +1,7 @@
-# Prerequesities
+This is the reproduction Cerebro which proposed in TOSEM 25' paper "Killing Two Birds with One Stone: Malicious Package Detection in NPM and PyPI using a Single Model of Malicious Behavior Sequence"
+
+
+## Prerequesities
 
 1. Download jelly
 
@@ -14,7 +17,7 @@
     pip install transformers datasets scikit-learn
     ```
 
-# Usage
+## Usage
 
 1. Prepare dataset
 
@@ -32,7 +35,7 @@
     python .\scripts\05_train_bert.py
     ```
 
-# Dir list
+## Dir tree
 
 ```
 cerebro-repro/
