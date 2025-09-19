@@ -26,7 +26,7 @@ This is the reproduction Cerebro which proposed in TOSEM 25' paper "Killing Two 
 
     ```bash
     # label = 1 means malicious
-    python scripts/run_all.py --dataset_dir /dir/to/mal_dataset --out_dir ./outputs  --workers 16 --jelly_timeout 1000 --label 1
+    python scripts/run_all.py --dataset_dir /dir/to/mal_dataset --out_dir ./outputs  --jelly_timeout 1000 --label 1 --parallel_batches 6
     ```
 
 2. Train the model
