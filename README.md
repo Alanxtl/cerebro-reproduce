@@ -32,7 +32,7 @@ This is the reproduction Cerebro which proposed in TOSEM 25' paper "Killing Two 
 2. Train the model
 
     ```bash
-    python .\scripts\05_train_bert.py
+    python .\scripts\05_train_bert.py outputs\train.jsonl
     ```
 
 3. Start infer

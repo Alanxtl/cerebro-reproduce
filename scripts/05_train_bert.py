@@ -1,22 +1,36 @@
 import json, pathlib, random
+import sys
 from datasets import Dataset
 import numpy as np
+from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
 from sklearn.metrics import classification_report, precision_recall_fscore_support, accuracy_score
 
-DATA = pathlib.Path("./outputs/sequences.jsonl")  # each line: {"pkg":..., "sequence_text":..., "label":0/1}
-lines = [json.loads(l) for l in DATA.read_text(encoding="utf-8").splitlines()]
-random.shuffle(lines)
-split = int(len(lines)*0.8)
-split_1 = int(len(lines)*0.1)
-train, eval, test = lines[:split], lines[split:split_1+split], lines[split_1+split:]
+DATA = pathlib.Path(sys.argv[1])  # each line: {"pkg":..., "sequence_text":..., "label":0/1}
+rows = [json.loads(l) for l in DATA.read_text(encoding="utf-8").splitlines()]
+
+y = [r["label"] for r in rows]
+train_rows, temp_rows, y_train, y_temp = train_test_split(
+    rows, y, test_size=0.2, random_state=42, shuffle=True, stratify=y
+)
+
+y_temp_list = [r["label"] for r in temp_rows]
+eval_rows, test_rows, y_eval, y_test = train_test_split(
+    temp_rows, y_temp_list, test_size=0.5, random_state=42, shuffle=True, stratify=y_temp_list
+)
+
+print(f"Split sizes => train: {len(train_rows)}, eval: {len(eval_rows)}, test: {len(test_rows)}")
 
 tok = AutoTokenizer.from_pretrained("bert-base-uncased")
+
 def enc(batch):
-    return tok(batch["sequence_text"], truncation=True, padding="max_length", max_length=256)
-train_ds = Dataset.from_list(train).map(enc, batched=True)
-eval_ds  = Dataset.from_list(eval).map(enc, batched=True)
-test_ds  = Dataset.from_list(test).map(enc, batched=True)
+    enc_out = tok(batch["sequence_text"], truncation=True, padding="max_length", max_length=256)
+    enc_out["labels"] = batch["label"]
+    return enc_out
+
+train_ds = Dataset.from_list(train_rows).map(enc, batched=True)
+eval_ds  = Dataset.from_list(eval_rows).map(enc, batched=True)
+test_ds  = Dataset.from_list(test_rows).map(enc, batched=True)
 
 model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
 
