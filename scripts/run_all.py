@@ -16,11 +16,17 @@ from tqdm import tqdm
 ZIP_PWD = b"infected"
 EXTS = (".tgz", ".tar.gz", ".tar", ".zip")
 
+
 def jhash(p: pathlib.Path) -> str:
     return hashlib.sha1(str(p).encode()).hexdigest()[:10]
 
+
 def ensure_dir(p: pathlib.Path):
     p.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        print(f"Failed to create output directory: {p}", file=sys.stderr)
+        sys.exit(1)
+
 
 def list_archives(root: pathlib.Path):
     out = []
@@ -29,6 +35,7 @@ def list_archives(root: pathlib.Path):
             if fn.endswith(EXTS):
                 out.append(pathlib.Path(d) / fn)
     return out
+
 
 def safe_extract(arch: pathlib.Path, dest_root: pathlib.Path) -> pathlib.Path:
     out = dest_root / (arch.stem.replace(".tar", "") + "_" + jhash(arch))
@@ -46,6 +53,7 @@ def safe_extract(arch: pathlib.Path, dest_root: pathlib.Path) -> pathlib.Path:
             tf.extractall(out)
     return out
 
+
 def find_pkg_dir(root: pathlib.Path):
     if not root.exists():
         return None
@@ -61,8 +69,11 @@ def find_pkg_dir(root: pathlib.Path):
             sub[:] = []
     return None
 
+
 def run(cmd, timeout=None, cwd=None):
-    p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    p = subprocess.Popen(
+        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
     try:
         out, err = p.communicate(timeout=timeout)
         code = p.returncode
@@ -71,9 +82,17 @@ def run(cmd, timeout=None, cwd=None):
         return -9, "", "TIMEOUT"
     return code, out, err
 
-def process_one(arch: pathlib.Path, tools_dir: pathlib.Path, tmp_root: pathlib.Path,
-                out_root: pathlib.Path, jelly_timeout: int, label: int,
-                batch_seq_path: pathlib.Path):
+
+def process_one(
+    arch: pathlib.Path,
+    tools_dir: pathlib.Path,
+    tmp_root: pathlib.Path,
+    out_root: pathlib.Path,
+    name: str,
+    jelly_timeout: int,
+    label: int,
+    batch_seq_path: pathlib.Path,
+):
     """single package process"""
     sid = arch.stem + "_" + jhash(arch)
     work = tmp_root / sid
@@ -106,51 +125,95 @@ def process_one(arch: pathlib.Path, tools_dir: pathlib.Path, tmp_root: pathlib.P
             p.kill()
             out, err = "", "TIMEOUT"
             code = -9
-        (logd / "jelly.stdout.log").write_text(out or "", encoding="utf-8", errors="ignore")
-        (logd / "jelly.stderr.log").write_text(err or "", encoding="utf-8", errors="ignore")
+        (logd / "01_jelly.stdout.log").write_text(
+            out or "pass", encoding="utf-8", errors="ignore"
+        )
+        (logd / "01_jelly.stderr.log").write_text(
+            err or "pass", encoding="utf-8", errors="ignore"
+        )
 
         # 3) entries
         entries_txt = logd / "entries.txt"
-        code, out, err = run([
-            sys.executable, str(tools_dir / "02_extract_entries.py"),
-            "--pkg_dir", str(pkg_dir),
-            "--out", str(entries_txt)
-        ])
-        (logd / "step02.stdout.log").write_text(out or "", encoding="utf-8", errors="ignore")
-        (logd / "step02.stderr.log").write_text(err or "", encoding="utf-8", errors="ignore")
-        if not entries_txt.exists() or entries_txt.read_text(encoding="utf-8").strip() == "":
+        code, out, err = run(
+            [
+                sys.executable,
+                str(tools_dir / "02_extract_entries.py"),
+                "--pkg_dir",
+                str(pkg_dir),
+                "--out",
+                str(entries_txt),
+            ]
+        )
+        (logd / "02_extract_entries.stdout.log").write_text(
+            out or "pass", encoding="utf-8", errors="ignore"
+        )
+        (logd / "02_extract_entries.stderr.log").write_text(
+            err or "pass", encoding="utf-8", errors="ignore"
+        )
+        if (
+            not entries_txt.exists()
+            or entries_txt.read_text(encoding="utf-8").strip() == ""
+        ):
             (logd / "warn.txt").write_text("No entries\n", encoding="utf-8")
             return None
 
-        # 4) AST 
+        # 4) AST
         feat_jsonl = logd / "features.jsonl"
-        code, out, err = run([
-            sys.executable, str(tools_dir / "03_ast_walk_and_map_dims.py"),
-            "--entries", str(entries_txt),
-            "--features_out", str(feat_jsonl)
-        ])
-        (logd / "step03.stdout.log").write_text(out or "", encoding="utf-8", errors="ignore")
-        (logd / "step03.stderr.log").write_text(err or "", encoding="utf-8", errors="ignore")
+        code, out, err = run(
+            [
+                sys.executable,
+                str(tools_dir / "03_ast_walk_and_map_dims.py"),
+                "--entries",
+                str(entries_txt),
+                "--features_out",
+                str(feat_jsonl),
+            ]
+        )
+        (logd / "03_ast_walk_and_map_dims.stdout.log").write_text(
+            out or "pass", encoding="utf-8", errors="ignore"
+        )
+        (logd / "03_ast_walk_and_map_dims.stderr.log").write_text(
+            err or "pass", encoding="utf-8", errors="ignore"
+        )
 
         # 5) Build sequences
-        seq_jsonl = logd / "sequence.jsonl"
-        code, out, err = run([
-            sys.executable, str(tools_dir / "04_build_sequences.py"),
-            "--pkg_name", arch.name,
-            "--pkg_dir", str(pkg_dir.resolve()),
-            "--entries", str(entries_txt),
-            "--cg", str(cg_json),
-            "--sequence_out", str(seq_jsonl),
-            "--long-threshold", "50",
-            "--scan-node-modules", "false",
-            "--label", str(label)
-        ], timeout=None)
-        (logd / "seq.stdout.log").write_text(out or "", encoding="utf-8", errors="ignore")
-        (logd / "seq.stderr.log").write_text(err or "", encoding="utf-8", errors="ignore")
+        seq_jsonl = logd / f"{name}.jsonl"
+        code, out, err = run(
+            [
+                sys.executable,
+                str(tools_dir / "04_build_sequences.py"),
+                "--pkg_name",
+                arch.name,
+                "--pkg_dir",
+                str(pkg_dir.resolve()),
+                "--entries",
+                str(entries_txt),
+                "--cg",
+                str(cg_json),
+                "--sequence_out",
+                str(seq_jsonl),
+                "--long-threshold",
+                "50",
+                "--scan-node-modules",
+                "false",
+                "--label",
+                str(label),
+            ],
+            timeout=None,
+        )
+        (logd / "04_build_sequences.stdout.log").write_text(
+            out or "pass", encoding="utf-8", errors="ignore"
+        )
+        (logd / "04_build_sequences.stderr.log").write_text(
+            err or "pass", encoding="utf-8", errors="ignore"
+        )
 
         # 6) write batch-level sequences
         if seq_jsonl.exists():
-            with open(batch_seq_path, "a", encoding="utf-8") as fw, open(seq_jsonl, "r", encoding="utf-8") as fr:
+            with (
+                open(batch_seq_path, "a", encoding="utf-8") as fw,
+                open(seq_jsonl, "r", encoding="utf-8") as fr,
+            ):
                 for line in fr:
                     o = json.loads(line)
                     o["pkg"] = arch.name
@@ -169,21 +232,32 @@ def process_one(arch: pathlib.Path, tools_dir: pathlib.Path, tmp_root: pathlib.P
             pass
         gc.collect()
 
+
 # ----------------------------
 # workers
 # ----------------------------
-def run_worker(batch_file: pathlib.Path, batch_id: int, tools: pathlib.Path,
-               tmp: pathlib.Path, out: pathlib.Path, jelly_timeout: int, label: int):
+def run_worker(
+    batch_file: pathlib.Path,
+    batch_id: int,
+    tools: pathlib.Path,
+    tmp: pathlib.Path,
+    out: pathlib.Path,
+    name: str,
+    jelly_timeout: int,
+    label: int,
+):
     data = json.loads(pathlib.Path(batch_file).read_text(encoding="utf-8"))
     archives = [pathlib.Path(p) for p in data["archives"]]
 
-    batch_seq_path = out / f"sequences.batch_{batch_id:05d}.jsonl"
+    batch_seq_path = out / f"{name}.batch_{batch_id:05d}.jsonl"
     if batch_seq_path.exists():
         batch_seq_path.unlink()
 
     ok, skipped, errc = 0, 0, 0
     for arch in archives:
-        r = process_one(arch, tools, tmp, out, jelly_timeout, label, batch_seq_path)
+        r = process_one(
+            arch = arch, tools_dir = tools, tmp_root = tmp, out_root = out, name = name, jelly_timeout = jelly_timeout, label = label, batch_seq_path = batch_seq_path
+        )
         if r is True:
             ok += 1
         elif r is None:
@@ -193,14 +267,23 @@ def run_worker(batch_file: pathlib.Path, batch_id: int, tools: pathlib.Path,
     gc.collect()
     print(json.dumps({"ok": ok, "skipped": skipped, "err": errc}))
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset_dir", required=True)
     ap.add_argument("--out_dir", required=True)
+    ap.add_argument("--name", required=True)
     ap.add_argument("--label", type=int, required=True)
     ap.add_argument("--jelly_timeout", type=int, default=120)
-    ap.add_argument("--batch_size", type=int, default=50, help="how many archives per batch")
-    ap.add_argument("--parallel_batches", type=int, default=1, help="how many batches to run in parallel")
+    ap.add_argument(
+        "--batch_size", type=int, default=50, help="how many archives per batch"
+    )
+    ap.add_argument(
+        "--parallel_batches",
+        type=int,
+        default=1,
+        help="how many batches to run in parallel",
+    )
     # worker args
     ap.add_argument("--worker_batch_file", type=str, default="")
     ap.add_argument("--worker_batch_id", type=int, default=-1)
@@ -215,8 +298,16 @@ def main():
     tools = pathlib.Path(__file__).resolve().parent
 
     if args.worker_batch_file:
-        run_worker(pathlib.Path(args.worker_batch_file), int(args.worker_batch_id),
-                   tools, tmp, out, args.jelly_timeout, args.label)
+        run_worker(
+            batch_file = pathlib.Path(args.worker_batch_file),
+            batch_id = int(args.worker_batch_id),
+            tools = tools,
+            tmp = tmp,
+            out = out,
+            name = args.name,
+            jelly_timeout = args.jelly_timeout,
+            label = args.label,
+        )
         return
 
     archives = list_archives(dataset)
@@ -225,14 +316,16 @@ def main():
         sys.exit(1)
     print(f"Found {len(archives)} archives")
 
-    global_seq = out / "sequences.jsonl"
+    global_seq = out / f"{args.name}.jsonl"
     if global_seq.exists():
         global_seq.unlink()
 
     # split into batches
     B = max(1, int(args.batch_size))
-    batches = [archives[i:i+B] for i in range(0, len(archives), B)]
-    print(f"Planned {len(batches)} batches (batch_size={B}, parallel={args.parallel_batches})")
+    batches = [archives[i : i + B] for i in range(0, len(archives), B)]
+    print(
+        f"Planned {len(batches)} batches (batch_size={B}, parallel={args.parallel_batches})"
+    )
 
     running = {}
     pbar = tqdm(total=len(batches), desc="Batches")
@@ -241,15 +334,29 @@ def main():
         bfile = tmp / f"._batch_{batch_idx:05d}.json"
         with open(bfile, "w", encoding="utf-8") as f:
             json.dump({"archives": [str(a) for a in batch_archives]}, f)
-        proc = subprocess.Popen([
-            sys.executable, str(pathlib.Path(__file__).resolve()),
-            "--dataset_dir", str(dataset),
-            "--out_dir", str(out),
-            "--label", str(args.label),
-            "--jelly_timeout", str(args.jelly_timeout),
-            "--worker_batch_file", str(bfile),
-            "--worker_batch_id", str(batch_idx),
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(pathlib.Path(__file__).resolve()),
+                "--dataset_dir",
+                str(dataset),
+                "--out_dir",
+                str(out),
+                "--name",
+                str(args.name),
+                "--label",
+                str(args.label),
+                "--jelly_timeout",
+                str(args.jelly_timeout),
+                "--worker_batch_file",
+                str(bfile),
+                "--worker_batch_id",
+                str(batch_idx),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         return proc, bfile
 
     idx = 0
@@ -271,9 +378,12 @@ def main():
             except Exception:
                 pass
 
-            batch_seq_path = out / f"sequences.batch_{bi:05d}.jsonl"
+            batch_seq_path = out / f"{args.name}.batch_{bi:05d}.jsonl"
             if batch_seq_path.exists():
-                with open(global_seq, "a", encoding="utf-8") as fw, open(batch_seq_path, "r", encoding="utf-8") as fr:
+                with (
+                    open(global_seq, "a", encoding="utf-8") as fw,
+                    open(batch_seq_path, "r", encoding="utf-8") as fr,
+                ):
                     shutil.copyfileobj(fr, fw)
                 try:
                     batch_seq_path.unlink()
@@ -287,7 +397,8 @@ def main():
             running.pop(bi, None)
 
     pbar.close()
-    print("Done. sequences.jsonl =>", global_seq)
+    print(f"Done. {args.name}.jsonl =>", global_seq)
+
 
 if __name__ == "__main__":
     main()

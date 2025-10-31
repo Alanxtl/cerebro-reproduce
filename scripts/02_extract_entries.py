@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import json, re, pathlib, argparse
 
-HOOKS = ["preinstall","install","postinstall"]
+HOOKS = ["preinstall", "install", "postinstall"]
 JS_PATTERNS = [
     re.compile(r"(?:^|\s)(?:node\s+)?(?P<f>[\w./-]+\.js)\b"),
     re.compile(r"\bnode\s+-e\s+"),
 ]
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -16,14 +17,16 @@ def main():
     pkg = pathlib.Path(args.pkg_dir)
     pkg_json = pkg / "package.json"
     if not pkg_json.exists():
-        open(args.out, "w", encoding="utf-8").close(); return
+        open(args.out, "w", encoding="utf-8").close()
+        return
 
     data = json.loads(pkg_json.read_text(encoding="utf-8", errors="ignore"))
     scripts = data.get("scripts") or {}
     entries = []
     for h in HOOKS:
         s = scripts.get(h)
-        if not s: continue
+        if not s:
+            continue
         for pat in JS_PATTERNS:
             for m in pat.finditer(s):
                 f = m.groupdict().get("f")
@@ -43,10 +46,14 @@ def main():
             if index_js.exists():
                 entries = [str(index_js)]
 
-    seen=set(); lines=[]
+    seen = set()
+    lines = []
     for e in entries:
-        if e not in seen: seen.add(e); lines.append(e)
+        if e not in seen:
+            seen.add(e)
+            lines.append(e)
     pathlib.Path(args.out).write_text("\n".join(lines), encoding="utf-8")
+
 
 if __name__ == "__main__":
     main()

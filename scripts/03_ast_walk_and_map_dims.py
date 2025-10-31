@@ -25,20 +25,33 @@ from tree_sitter import Language, Parser
 
 # Node core modules by category
 OS_CORE = {"os"}
-FS_CORE = {"fs", "path"} 
+FS_CORE = {"fs", "path"}
 NET_CORE = {"http", "https", "net", "tls", "dgram", "dns", "url"}
 ENC_CORE = {"crypto", "zlib", "buffer", "querystring"}
 
 # Popular 3rd-party network libs (D1/D2)
 NET_THIRD_PARTY = {
-    "axios", "node-fetch", "cross-fetch", "isomorphic-fetch",
-    "request", "got", "superagent", "needle", "undici",
-    "ws", "websocket", "websocket-stream",
+    "axios",
+    "node-fetch",
+    "cross-fetch",
+    "isomorphic-fetch",
+    "request",
+    "got",
+    "superagent",
+    "needle",
+    "undici",
+    "ws",
+    "websocket",
+    "websocket-stream",
 }
 
-# Encoding-related userland libs (E1/E2) 
+# Encoding-related userland libs (E1/E2)
 ENC_THIRD_PARTY = {
-    "iconv", "iconv-lite", "base64-js", "js-base64", "pako",
+    "iconv",
+    "iconv-lite",
+    "base64-js",
+    "js-base64",
+    "pako",
 }
 
 # Process module import name
@@ -46,9 +59,14 @@ PROCESS_PKG = {"process", "child_process"}  # require('process')
 
 # Shell-ish indicators in command strings (P3)
 SHELL_TOKENS = [
-    r"\bsh\b", r"\bbash\b", r"\bzsh\b", r"\bcmd\.exe\b", r"\bpowershell\b",
-    r"\bsh\s+-c\b", r"\bbash\s+-c\b",
-    r"[|&;><`]"  # pipe/and/or/redirect/backtick
+    r"\bsh\b",
+    r"\bbash\b",
+    r"\bzsh\b",
+    r"\bcmd\.exe\b",
+    r"\bpowershell\b",
+    r"\bsh\s+-c\b",
+    r"\bbash\s+-c\b",
+    r"[|&;><`]",  # pipe/and/or/redirect/backtick
 ]
 
 BASE64_MIN_LEN_DEFAULT = 40  # base64 min length
@@ -79,8 +97,10 @@ DIM = {
 # Helpers
 # ----------------------------
 
+
 def compile_shell_re():
     return re.compile("|".join(SHELL_TOKENS), re.I)
+
 
 def is_base64_like(s: str, min_len: int) -> bool:
     # long + Base64 charset + padding
@@ -95,33 +115,43 @@ def is_base64_like(s: str, min_len: int) -> bool:
         return True
     return True
 
+
 def is_url_like(s: str) -> bool:
     if re.search(r"https?://", s, re.I):
         return True
-    # data: or ftp: -> URL 
+    # data: or ftp: -> URL
     if re.match(r"(?:data|ftp|ws|wss):", s, re.I):
         return True
     return False
 
+
 def norm_string(src: bytes, node) -> str:
-    text = src[node.start_byte:node.end_byte].decode("utf-8", "ignore")
+    text = src[node.start_byte : node.end_byte].decode("utf-8", "ignore")
     return text.strip().strip("\"'`")
 
-def code_text(src: bytes, node) -> str:
-    return src[node.start_byte:node.end_byte].decode("utf-8", "ignore")
 
-def add_feat(feats: List[Dict[str, Any]], file_path: pathlib.Path, node, dim_key: str, src: bytes):
-    feats.append({
-        "file": str(file_path),
-        "line": node.start_point[0] + 1,
-        "dim": dim_key,
-        "dim_text": DIM[dim_key],
-        "snippet": code_text(src, node)[:200],
-    })
+def code_text(src: bytes, node) -> str:
+    return src[node.start_byte : node.end_byte].decode("utf-8", "ignore")
+
+
+def add_feat(
+    feats: List[Dict[str, Any]], file_path: pathlib.Path, node, dim_key: str, src: bytes
+):
+    feats.append(
+        {
+            "file": str(file_path),
+            "line": node.start_point[0] + 1,
+            "dim": dim_key,
+            "dim_text": DIM[dim_key],
+            "snippet": code_text(src, node)[:200],
+        }
+    )
+
 
 # ----------------------------
 # Import / require name extraction
 # ----------------------------
+
 
 def get_import_source_from_import_decl(src: bytes, node) -> str:
     # import ... from 'xxx'
@@ -131,15 +161,18 @@ def get_import_source_from_import_decl(src: bytes, node) -> str:
             return norm_string(src, ch)
     return ""
 
+
 def get_require_arg_from_call(src: bytes, node) -> str:
     # require('xxx') / import('xxx')
     text = code_text(src, node)
     m = re.search(r"(?:require|import)\s*\(\s*(['\"])(.*?)\1\s*\)", text)
     return m.group(2) if m else ""
 
+
 # ----------------------------
 # Category tests
 # ----------------------------
+
 
 def classify_import_to_dim(pkg: str):
     if pkg in OS_CORE:
@@ -152,20 +185,30 @@ def classify_import_to_dim(pkg: str):
         return "E1"
     if pkg in PROCESS_PKG:
         return "P1"
-    # @aws-sdk/node-http-handler 
+    # @aws-sdk/node-http-handler
     if "http" in pkg or "https" in pkg or "fetch" in pkg or "socket" in pkg:
         return "D1"
-    if "crypto" in pkg or "encode" in pkg or "decod" in pkg or "iconv" in pkg or "base64" in pkg or "zlib" in pkg:
+    if (
+        "crypto" in pkg
+        or "encode" in pkg
+        or "decod" in pkg
+        or "iconv" in pkg
+        or "base64" in pkg
+        or "zlib" in pkg
+    ):
         return "E1"
     if pkg == "url":
-        return "D1"  # url 
+        return "D1"  # url
     return ""
+
 
 def is_os_call(code: str) -> bool:
     return bool(re.search(r"\bos\.\w+\s*\(", code))
 
+
 def is_fs_call(code: str) -> bool:
     return bool(re.search(r"\bfs\.\w+\s*\(", code))
+
 
 def is_net_call(code: str) -> bool:
     if re.search(r"\bhttps?\.(request|get|Agent|createServer)\s*\(", code):
@@ -180,6 +223,7 @@ def is_net_call(code: str) -> bool:
         return True
     return False
 
+
 def is_enc_call(code: str) -> bool:
     # Buffer / atob / btoa / TextEncoder / crypto / zlib
     if re.search(r"\bBuffer\.from\s*\(\s*.+?,\s*(['\"])base64\1\s*\)", code):
@@ -190,19 +234,31 @@ def is_enc_call(code: str) -> bool:
         return True
     if re.search(r"\bnew\s+TextEncoder\s*\(|\bnew\s+TextDecoder\s*\(", code):
         return True
-    if re.search(r"\bcrypto\.(createCipher|createCipheriv|createDecipher|createDecipheriv|createHash|createHmac)\s*\(", code, re.I):
+    if re.search(
+        r"\bcrypto\.(createCipher|createCipheriv|createDecipher|createDecipheriv|createHash|createHmac)\s*\(",
+        code,
+        re.I,
+    ):
         return True
-    if re.search(r"\bzlib\.(gzip|gunzip|deflate|inflate|brotliCompress|brotliDecompress)\s*\(", code):
+    if re.search(
+        r"\bzlib\.(gzip|gunzip|deflate|inflate|brotliCompress|brotliDecompress)\s*\(",
+        code,
+    ):
         return True
     return False
 
+
 def is_process_call(code: str) -> bool:
-    # process API 
-    if re.search(r"\bprocess.*\.(env|argv|versions|cwd|chdir|exit|kill|pid|ppid|umask|uptime|memoryUsage)\b", code):
+    # process API
+    if re.search(
+        r"\bprocess.*\.(env|argv|versions|cwd|chdir|exit|kill|pid|ppid|umask|uptime|memoryUsage)\b",
+        code,
+    ):
         return True
     if re.search(r"child_process.*\.(exec|execFile|spawn|fork)\s*\(", code):
         return True
     return False
+
 
 def is_sensitive_info(code: str) -> bool:
     # read of env_var, userinfo, homedir, tempdir
@@ -210,9 +266,12 @@ def is_sensitive_info(code: str) -> bool:
         return True
     if re.search(r"\bos\.(userInfo|homedir|tmpdir)\s*\(", code):
         return True
-    if re.search(r"(/etc/passwd|id_rsa|\.npmrc|\.ssh/|AppData\\Roaming|%APPDATA%)", code):
+    if re.search(
+        r"(/etc/passwd|id_rsa|\.npmrc|\.ssh/|AppData\\Roaming|%APPDATA%)", code
+    ):
         return True
     return False
+
 
 def is_runtime_eval(code: str) -> bool:
     if re.search(r"\beval\s*\(", code):
@@ -231,19 +290,23 @@ def is_runtime_eval(code: str) -> bool:
         return True
     return False
 
+
 def is_bash_like_command(code: str, shell_re: re.Pattern) -> bool:
-    # child_process 
+    # child_process
     return bool(shell_re.search(code))
+
 
 # ----------------------------
 # Core scanner
 # ----------------------------
 
-JS_LANGUAGE = Language(jsts.language()) 
+JS_LANGUAGE = Language(jsts.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
 
 
-def scan_file(file_path: pathlib.Path, long_threshold: int, shell_re: re.Pattern) -> List[Dict[str, Any]]:
+def scan_file(
+    file_path: pathlib.Path, long_threshold: int, shell_re: re.Pattern
+) -> List[Dict[str, Any]]:
     feats: List[Dict[str, Any]] = []
     try:
         src = file_path.read_bytes()
@@ -305,14 +368,14 @@ def scan_file(file_path: pathlib.Path, long_threshold: int, shell_re: re.Pattern
 
             # child_process + bash-like
             if re.search(r"\bchild_process.*\.(exec|execFile|spawn|fork)\s*\(", code):
-                # shell:true 
+                # shell:true
                 if re.search(r"shell\s*:\s*true", code):
                     add_feat(feats, file_path, n, "P3", src)
                 # exec
                 if is_bash_like_command(code, shell_re):
                     add_feat(feats, file_path, n, "P3", src)
 
-        # new URL('...') 
+        # new URL('...')
         if t in ("new_expression", "call_expression"):
             if re.search(r"\bnew\s+URL\s*\(", code):
                 add_feat(feats, file_path, n, "D3", src)
@@ -342,28 +405,48 @@ def scan_file(file_path: pathlib.Path, long_threshold: int, shell_re: re.Pattern
 
     return feats
 
+
 # ----------------------------
 # Driver
 # ----------------------------
+
 
 def should_skip(path: pathlib.Path, scan_node_modules: bool) -> bool:
     if scan_node_modules:
         return False
     return "node_modules" in path.parts
 
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--entries", required=True, help="Path to a file containing one JS/TS entry path per line")
+    ap.add_argument(
+        "--entries",
+        required=True,
+        help="Path to a file containing one JS/TS entry path per line",
+    )
     ap.add_argument("--features_out", required=True, help="Append JSONL features here")
-    ap.add_argument("--long-threshold", type=int, default=50, help="E4: long string length threshold (default: 50)")
-    ap.add_argument("--scan-node-modules", type=str, default="false", help="Scan files under node_modules (true/false)")
+    ap.add_argument(
+        "--long-threshold",
+        type=int,
+        default=50,
+        help="E4: long string length threshold (default: 50)",
+    )
+    ap.add_argument(
+        "--scan-node-modules",
+        type=str,
+        default="false",
+        help="Scan files under node_modules (true/false)",
+    )
     args = ap.parse_args()
 
     scan_nm = args.scan_node_modules.strip().lower() == "true"
     shell_re = compile_shell_re()
 
     feats_out = pathlib.Path(args.features_out)
-    with open(args.entries, "r", encoding="utf-8") as fr, open(feats_out, "a", encoding="utf-8") as fw:
+    with (
+        open(args.entries, "r", encoding="utf-8") as fr,
+        open(feats_out, "a", encoding="utf-8") as fw,
+    ):
         for line in fr:
             p = pathlib.Path(line.strip())
             if not p or not p.exists():
@@ -374,6 +457,7 @@ def main():
             feats = scan_file(p, long_threshold=args.long_threshold, shell_re=shell_re)
             for f in feats:
                 fw.write(json.dumps(f, ensure_ascii=False) + "\n")
+
 
 if __name__ == "__main__":
     main()

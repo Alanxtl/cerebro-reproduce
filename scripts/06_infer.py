@@ -1,7 +1,12 @@
 import json, sys, pathlib
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
-from sklearn.metrics import accuracy_score, classification_report, precision_recall_fscore_support, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    precision_recall_fscore_support,
+    confusion_matrix,
+)
 from tqdm import tqdm
 
 MODEL_DIR = "./outputs/models/bert-final"
@@ -15,12 +20,18 @@ y_true, y_pred = [], []
 lines = in_jsonl.read_text(encoding="utf-8").splitlines()
 for line in tqdm(lines, desc="Inferencing"):
     o = json.loads(line)
-    t = tok(o["sequence_text"], return_tensors="pt", truncation=True, padding=True, max_length=256)
+    t = tok(
+        o["sequence_text"],
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=256,
+    )
     with torch.no_grad():
         logits = model(**t).logits
         prob = logits.softmax(-1)[0].tolist()
     pred = int(torch.argmax(logits, dim=-1).item())
-    
+
     y_true.append(int(o["label"]))
     y_pred.append(pred)
 

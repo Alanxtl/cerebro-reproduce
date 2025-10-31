@@ -3,10 +3,21 @@ import sys
 from datasets import Dataset
 import numpy as np
 from sklearn.model_selection import train_test_split
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer
-from sklearn.metrics import classification_report, precision_recall_fscore_support, accuracy_score
+from transformers import (
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+    TrainingArguments,
+    Trainer,
+)
+from sklearn.metrics import (
+    classification_report,
+    precision_recall_fscore_support,
+    accuracy_score,
+)
 
-DATA = pathlib.Path(sys.argv[1])  # each line: {"pkg":..., "sequence_text":..., "label":0/1}
+DATA = pathlib.Path(
+    sys.argv[1]
+)  # each line: {"pkg":..., "sequence_text":..., "label":0/1}
 rows = [json.loads(l) for l in DATA.read_text(encoding="utf-8").splitlines()]
 
 y = [r["label"] for r in rows]
@@ -16,30 +27,47 @@ train_rows, temp_rows, y_train, y_temp = train_test_split(
 
 y_temp_list = [r["label"] for r in temp_rows]
 eval_rows, test_rows, y_eval, y_test = train_test_split(
-    temp_rows, y_temp_list, test_size=0.5, random_state=42, shuffle=True, stratify=y_temp_list
+    temp_rows,
+    y_temp_list,
+    test_size=0.5,
+    random_state=42,
+    shuffle=True,
+    stratify=y_temp_list,
 )
 
-print(f"Split sizes => train: {len(train_rows)}, eval: {len(eval_rows)}, test: {len(test_rows)}")
+print(
+    f"Split sizes => train: {len(train_rows)}, eval: {len(eval_rows)}, test: {len(test_rows)}"
+)
 
 tok = AutoTokenizer.from_pretrained("bert-base-uncased")
 
+
 def enc(batch):
-    enc_out = tok(batch["sequence_text"], truncation=True, padding="max_length", max_length=256)
+    enc_out = tok(
+        batch["sequence_text"], truncation=True, padding="max_length", max_length=256
+    )
     enc_out["labels"] = batch["label"]
     return enc_out
 
-train_ds = Dataset.from_list(train_rows).map(enc, batched=True)
-eval_ds  = Dataset.from_list(eval_rows).map(enc, batched=True)
-test_ds  = Dataset.from_list(test_rows).map(enc, batched=True)
 
-model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=2)
+train_ds = Dataset.from_list(train_rows).map(enc, batched=True)
+eval_ds = Dataset.from_list(eval_rows).map(enc, batched=True)
+test_ds = Dataset.from_list(test_rows).map(enc, batched=True)
+
+model = AutoModelForSequenceClassification.from_pretrained(
+    "bert-base-uncased", num_labels=2
+)
+
 
 def metrics(p):
     preds = p.predictions.argmax(-1)
     y = p.label_ids
     acc = accuracy_score(y, preds)
-    pr, rc, f1, _ = precision_recall_fscore_support(y, preds, average='binary', zero_division=0)
-    return {"accuracy":acc, "precision":pr, "recall":rc, "f1":f1}
+    pr, rc, f1, _ = precision_recall_fscore_support(
+        y, preds, average="binary", zero_division=0
+    )
+    return {"accuracy": acc, "precision": pr, "recall": rc, "f1": f1}
+
 
 args = TrainingArguments(
     output_dir="./outputs/models/bert",
@@ -52,7 +80,14 @@ args = TrainingArguments(
     learning_rate=2e-5,
 )
 
-trainer = Trainer(model=model, args=args, train_dataset=train_ds, eval_dataset=eval_ds, tokenizer=tok, compute_metrics=metrics)
+trainer = Trainer(
+    model=model,
+    args=args,
+    train_dataset=train_ds,
+    eval_dataset=eval_ds,
+    tokenizer=tok,
+    compute_metrics=metrics,
+)
 trainer.train()
 trainer.evaluate()
 trainer.save_model("./outputs/models/bert-final")
