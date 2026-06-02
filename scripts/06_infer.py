@@ -16,7 +16,19 @@ model.eval()
 
 in_jsonl = pathlib.Path(sys.argv[1])
 
+def get_types(o):
+    mt = o.get("malicious_types")
+    if isinstance(mt, list) and mt:
+        return [str(x) for x in mt if str(x).strip()]
+    tb = o.get("type_bucket")
+    if tb:
+        return [str(tb)]
+    return []
+
+
 y_true, y_pred = [], []
+type_stats = {}
+unknown_mal = 0
 lines = in_jsonl.read_text(encoding="utf-8").splitlines()
 for line in tqdm(lines, desc="Inferencing"):
     o = json.loads(line)
@@ -34,6 +46,15 @@ for line in tqdm(lines, desc="Inferencing"):
 
     y_true.append(int(o["label"]))
     y_pred.append(pred)
+    if int(o["label"]) == 1:
+        types = get_types(o)
+        if not types:
+            unknown_mal += 1
+        for tp in types:
+            stat = type_stats.setdefault(tp, {"total": 0, "hit": 0})
+            stat["total"] += 1
+            if pred == 1:
+                stat["hit"] += 1
 
     # print(json.dumps({
     #     "pkg": o.get("pkg"),
@@ -57,3 +78,14 @@ print(f"Recall   : {rec:.4f}")
 print(f"F1-score : {f1:.4f}")
 print("Confusion matrix:\n", cm)
 print("\nClassification Report:\n", report)
+
+if type_stats:
+    print("\n=== Detection Rate by Malicious Type ===")
+    items = sorted(type_stats.items(), key=lambda x: x[1]["total"], reverse=True)
+    for tp, stat in items:
+        total = stat["total"]
+        hit = stat["hit"]
+        rate = (hit / total) if total else 0.0
+        print(f"{tp}: {rate:.4f} ({hit}/{total})")
+if unknown_mal:
+    print(f"\nMalicious samples missing type info: {unknown_mal}")

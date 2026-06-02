@@ -1,21 +1,39 @@
-# 0) 准备：进入某个包目录并安装依赖（或把源码放 data/npm_pkgs/<pkg>）
-cd cerebro-repro
-npm i               # 在包目录执行，便于 Jelly 分析 node_modules
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 1) 生成 CG
-bash scripts/01_gen_cg.sh ./data/npm_pkgs/<your_pkg> ./outputs/cg.json ./outputs/cg.html
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 2) 提取安装脚本入口
-python scripts/02_extract_entries.py ./data/npm_pkgs/<your_pkg> > ./outputs/entry_files.txt
+resolve_python() {
+  if [[ -f "$ROOT_DIR/.venv/Scripts/python.exe" ]]; then
+    PYTHON_CMD=("$ROOT_DIR/.venv/Scripts/python.exe")
+  elif [[ -f "$ROOT_DIR/.venv/bin/python" ]]; then
+    PYTHON_CMD=("$ROOT_DIR/.venv/bin/python")
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_CMD=(python)
+  else
+    echo "No Python runner found."
+    exit 1
+  fi
+}
 
-# 3) AST 识别 + 维度映射（对入口内的每个 js 做）
-python scripts/03_ast_walk_and_map_dims.py $(cat ./outputs/entry_files.txt) > ./outputs/features.jsonl
+resolve_python
 
-# 4) 融合 CG 生成“自然语言”行为序列
-python scripts/04_build_sequences.py ./outputs/cg.json ./outputs/features.jsonl ./outputs/sequences.jsonl
+if [[ $# -lt 1 ]]; then
+  echo "Usage: ./run.sh standard-eval [args...]"
+  exit 1
+fi
 
-# 5) 训练（如你已有标签）
-python scripts/05_train_bert.py
+ACTION="$1"
+shift
 
-# 6) 推理
-python scripts/06_infer.py ./outputs/sequences.jsonl
+cd "$ROOT_DIR"
+
+case "$ACTION" in
+  standard-eval)
+    exec "${PYTHON_CMD[@]}" standard_pipeline.py "$@"
+    ;;
+  *)
+    echo "Unknown Cerebro action: $ACTION"
+    exit 1
+    ;;
+esac
