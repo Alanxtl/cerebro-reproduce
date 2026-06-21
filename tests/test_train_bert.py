@@ -67,6 +67,18 @@ class TrainBertTests(unittest.TestCase):
 
         self.assertTrue(args.oversample)
 
+    def test_preferred_device_uses_cuda_when_available(self) -> None:
+        with patch.object(train_bert.torch.cuda, "is_available", return_value=True):
+            device = train_bert.preferred_device()
+
+        self.assertEqual(device, "cuda")
+
+    def test_preferred_device_uses_cpu_when_cuda_is_unavailable(self) -> None:
+        with patch.object(train_bert.torch.cuda, "is_available", return_value=False):
+            device = train_bert.preferred_device()
+
+        self.assertEqual(device, "cpu")
+
 
 if __name__ == "__main__":
     unittest.main()

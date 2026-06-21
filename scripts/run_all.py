@@ -19,6 +19,7 @@ from typing import List
 ZIP_PWD = b"infected"
 EXTS = (".tgz", ".tar.gz", ".tar", ".zip")
 WINDOWS_PATH_LIMIT = 259
+SOURCE_EXTS = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
 
 
 def canon_path(p) -> str:
@@ -144,14 +145,27 @@ def find_pkg_dir(root: pathlib.Path):
     pj = root / "package.json"
     if pj.exists():
         return root
+    if _has_code_entry(root):
+        return root
     for d, sub, fs in os.walk(root):
         if "package.json" in fs:
+            return pathlib.Path(d)
+        if _has_code_entry(pathlib.Path(d), filenames=fs):
             return pathlib.Path(d)
         # avoid deep traversal
         rel = pathlib.Path(d).relative_to(root)
         if len(rel.parts) > 3:
             sub[:] = []
     return None
+
+
+def _has_code_entry(path: pathlib.Path, filenames=None) -> bool:
+    names = set(filenames) if filenames is not None else {p.name for p in path.iterdir()}
+    if "node_modules" in path.parts:
+        return False
+    if "index.js" in names:
+        return True
+    return any(pathlib.Path(name).suffix.lower() in SOURCE_EXTS for name in names)
 
 
 def run(cmd, timeout=None, cwd=None):
@@ -212,7 +226,7 @@ def process_one(
         src = safe_extract(arch, work)
         pkg_dir = find_pkg_dir(src)
         if not pkg_dir or not os.path.exists(pkg_dir):
-            (logd / "error.txt").write_text("No package.json\n", encoding="utf-8")
+            (logd / "error.txt").write_text("No package entry\n", encoding="utf-8")
             return None
 
         # 2) Jelly gen CG

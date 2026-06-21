@@ -472,6 +472,10 @@ def set_global_seed(seed: int) -> None:
     transformers_set_seed(seed)
 
 
+def preferred_device() -> str:
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 def split_train_eval_rows(
     rows: list[dict],
     labels: list[int],
@@ -596,6 +600,11 @@ def parse_args():
 def main():
     args = parse_args()
     set_global_seed(args.seed)
+    device = preferred_device()
+    if device == "cuda":
+        print(f"[Device] CUDA available; Trainer will use GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("[Device] CUDA unavailable; Trainer will use CPU")
 
     # Load ground truth if provided
     pkg_to_info = None
